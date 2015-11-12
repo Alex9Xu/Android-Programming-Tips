@@ -1,7 +1,4 @@
-# Android-Programming-Tips
-Android Programming Tips
-
-1. Resolve Android Apps crash on Samsung with Android 5.0 and above:
+Resolve Android Apps crash on Samsung with Android 5.0 and above:
 
 If your app only crash on Samsung with Android 5.0/5.1, but runs well on other phones with Android 5.0/5.1, check this file:
 app/src/main/res/vales/styles.xml: 
