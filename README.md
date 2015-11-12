@@ -9,7 +9,7 @@ at this line <style name="YourProjectTheme" parent="...">, check if your code is
 Samsung phones with Android 5.0/5.1 will crash on Base.ThemeOverlay... themes.
    
 To deal with this bug, use Anroid Styles theme, such as:
-   <style name="YourProjectTheme" parent="Base.ThemeOverlay.AppCompat.Light">
+   <style name="YourProjectTheme" parent="@android:style/Theme.Holo.Light">
    
 The bug is very difficult to find, because Android Studio is unable to show where this happens, it will show you that 
    "android.view.InflateException: Binary XML file line #7"
