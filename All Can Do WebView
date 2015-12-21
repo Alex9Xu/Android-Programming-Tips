@@ -1,0 +1,333 @@
+package com.bj8264.zaiwai.android.activities;
+
+import android.app.*;
+import android.graphics.Bitmap;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.util.Log;
+import android.view.KeyEvent;
+import android.view.View;
+import android.webkit.JavascriptInterface;
+import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import com.bj8264.zaiwai.android.R;
+import com.bj8264.zaiwai.android.utils.StringUtils;
+import com.bj8264.zaiwai.android.utils.Utils;
+
+import org.apache.http.util.EncodingUtils;
+
+import java.io.IOException;
+
+/**
+ * All Can Do WebView
+ * Created by Alex on 15/05/18, Alex9Xu@hotmail.com
+ */
+public class WebViewActivity extends BaseActivity {
+    private static final String TAG = "WebViewActivity";
+
+    private static WebViewActivity mInstance;
+    private static String mFromWhere;
+    private WebView mWebView;
+    private ProgressDialog mProgressDialog;
+    private String mPostUrl;
+    private String mPostData;
+    private String mLoadUrl;
+
+    private LinearLayout mBarBack;
+    private TextView mBarTitleText;
+    private TextView mBarRight;
+    private ImageView mBarMore;
+    private ImageView mBarNextToLeft;
+
+    private String mShareUrl;
+    private String mSharePicUrl;
+    private static String mShareItemTitle;
+    private static String mShareItemTid;
+    private static String mShareItemCallback;
+
+    private String mErrorHtmlStr;
+    private Boolean mIsNetError = false;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_web_view);
+
+        mProgressDialog=Utils.showNotifyDialog(this);
+        mProgressDialog.setMessage(getString(R.string.loading));
+        mProgressDialog.show();
+
+        initData();
+        initView();
+
+        getActionBar().hide();
+        initActionbarView();
+        mInstance = this;
+    }
+
+    private void initData() {
+        mPostUrl = getIntent().getExtras().getString("post_url");
+        mPostData = getIntent().getExtras().getString("post_data");
+        mLoadUrl = getIntent().getExtras().getString("load_url");
+        mFromWhere = getIntent().getExtras().getString("from_where","");
+        mShareItemTitle = "";
+
+        mErrorHtmlStr = "<html><body><h1>Page not find !</h1></body></html>";
+    }
+
+    private void initView() {
+        mWebView = (WebView) this.findViewById(R.id.webView);
+        findViewById(R.id.share_to_wechat).setVisibility(View.GONE);
+        mWebView.getSettings().setJavaScriptEnabled(true);
+        mWebView.setWebChromeClient(new WebChromeClient(){
+            @Override
+            public void onReceivedTitle(WebView view, String title) {
+                super.onReceivedTitle(view, title);
+                if(! StringUtils.isStringEmpty(mLoadUrl)) {
+                    Log.e(TAG, "title= " + title);
+                    mBarTitleText.setText(title);
+                }
+            }
+        });
+
+        mWebView.addJavascriptInterface(new JavaScriptInterface(), "android");
+
+        mWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                Log.e(TAG, "shouldOverrideUrlLoading url = "+url);
+                return false;
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if(mProgressDialog == null) {
+                    mProgressDialog=Utils.showNotifyDialog(WebViewActivity.this);
+                    mProgressDialog.setMessage(getString(R.string.loading));
+                }
+                mProgressDialog.show();
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                if(mProgressDialog != null) {
+                    mProgressDialog.dismiss();
+                }
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mBarMore.setVisibility(View.GONE);
+                    }
+                });
+                setShareInfo();
+            }
+
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                super.onReceivedError(view, errorCode, description, failingUrl);
+                Log.e(TAG, "Error: "+errorCode +", "+description +", "+failingUrl);
+                mWebView.loadData(mErrorHtmlStr, "text/html", "UTF-8");
+                mIsNetError = true;
+            }
+        });
+
+        if (Build.VERSION.SDK_INT >= 19) {
+            mWebView.getSettings().setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+        }
+
+        if(! StringUtils.isStringEmpty(mPostUrl) && ! StringUtils.isStringEmpty(mPostData)) {
+            Log.e(TAG,"mPostUrl = "+mPostUrl);
+            Log.e(TAG,"mPostData = "+mPostData);
+            postData(mPostUrl, mPostData);
+        } else if(! StringUtils.isStringEmpty(mLoadUrl)) {
+            Log.e(TAG,"mLoadUrl = "+mLoadUrl);
+            mWebView.loadUrl(mLoadUrl);
+        }
+    }
+
+
+    private void initActionbarView() {
+        View topBar = findViewById(R.id.common_top_web_view);
+        mBarBack = (LinearLayout) topBar.findViewById(R.id.layout_back);
+        mBarTitleText = (TextView) topBar.findViewById(R.id.back_text);
+        mBarMore = (ImageView) topBar.findViewById(R.id.image_more);
+        mBarRight = (TextView) topBar.findViewById(R.id.bar_right_text);
+        mBarNextToLeft = (ImageView) topBar.findViewById(R.id.bar_text_next_to_left);
+
+        mBarTitleText.setText("");
+        mBarBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mWebView.canGoBack() && ! mIsNetError) {
+                    mWebView.goBack();
+                }else{
+                    finishWebView();
+                }
+            }
+        });
+
+        mBarNextToLeft.setVisibility(View.VISIBLE);
+        mBarNextToLeft.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                finishWebView();
+            }
+        });
+
+        if( mFromWhere.equals("shop_nearby") ) {
+            mBarMore.setVisibility(View.GONE);
+            mBarRight.setVisibility(View.VISIBLE);
+            mBarRight.setText(getString(R.string.apply_shop));
+            mBarRight.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    mWebView.loadUrl(getString(R.string.apply_shop_url));
+                }
+            });
+        } else {
+            mBarMore.setVisibility(View.GONE);
+            mBarRight.setVisibility(View.GONE);
+        }
+
+        topBar.getBackground().setAlpha(40);
+    }
+
+    private void postData(String url, String str) {
+        mWebView.postUrl(url, EncodingUtils.getBytes(str, "base64"));
+    }
+
+    public static WebViewActivity getInstance() {
+        return mInstance;
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if ( keyCode == KeyEvent.KEYCODE_BACK && mWebView.canGoBack() && ! mIsNetError) {
+            mWebView.goBack();
+            return true;
+        }else{
+            finishWebView();
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    protected void onDestroy() {
+        mWebView.clearHistory();
+        mWebView.clearFormData();
+        mWebView.clearCache(true);
+        if(mProgressDialog != null) {
+            mProgressDialog.dismiss();
+        }
+        super.onDestroy();
+        mInstance = null;
+    }
+
+    private void finishWebView() {
+        Log.e(TAG, "finishWebView");
+        setResult(RESULT_OK);
+        finish();
+    }
+
+    private void shareToSocial() {
+        Utils.shareToPublic(mWebView, this, mShareItemTitle, "来自在外社区", mShareUrl, mSharePicUrl);
+    }
+
+    private void setShareInfo() {
+        Log.e(TAG, "setShareInfo");
+        mWebView.loadUrl("javascript:window.android.getSharePic(document.getElementsByName('wechat-share-pic')[0].content)");
+        mWebView.loadUrl("javascript:window.android.getShareTitle(document.getElementsByName('wechat-share-title')[0].content)");
+        mWebView.loadUrl("javascript:window.android.getShareUrl(document.getElementsByName('wechat-share-url')[0].content)");
+        mWebView.loadUrl("javascript:window.android.getShareTid(document.getElementsByName('wechat-share-tid')[0].content)");
+        mWebView.loadUrl("javascript:window.android.getShareCallback(document.getElementsByName('wechat-share-callback')[0].content)");
+    }
+
+    class JavaScriptInterface{
+
+        @JavascriptInterface
+        public void getShareUrl(final String shareUrl) {
+            if (!StringUtils.isStringEmpty(shareUrl)) {
+                Log.e(TAG,"received from js, getShareUrl = " + shareUrl);
+                mShareUrl = shareUrl;
+
+                Handler handler = new Handler(){
+                    @Override
+                    public void handleMessage(Message msg) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                mBarMore.setVisibility(View.VISIBLE);
+                                mBarMore.setOnClickListener(new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View v) {
+                                        shareToSocial();
+                                    }
+                                });
+                            }
+                        });
+                    }
+                };
+                handler.sendEmptyMessageDelayed(0, 2000);
+
+            }
+        }
+
+        @JavascriptInterface
+        public void getSharePic(final String sharePic) {
+            if (!StringUtils.isStringEmpty(sharePic)) {
+                Log.e(TAG,"received from js, getSharePic = " + sharePic);
+                try {
+                    mSharePicUrl = Utils.saveNetPicToStorage(WebViewActivity.this, sharePic, null);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        @JavascriptInterface
+        public void getShareTitle(final String strTitle) {
+            if (!StringUtils.isStringEmpty(strTitle)) {
+                Log.e(TAG,"received from js, getShareTitle = " + strTitle);
+                mShareItemTitle = strTitle;
+            }
+        }
+
+        @JavascriptInterface
+        public void getShareTid(final String strTid) {
+            if (!StringUtils.isStringEmpty(strTid)) {
+                Log.e(TAG,"received from js, getShareTid = " + strTid);
+                mShareItemTid = strTid;
+            }
+        }
+
+        @JavascriptInterface
+        public void getShareCallback(final String strCallback) {
+            if (!StringUtils.isStringEmpty(strCallback)) {
+                Log.e(TAG,"received from js, getShareCallback = " + strCallback);
+                mShareItemCallback = strCallback;
+            }
+        }
+    }
+
+    public static String getShareItemTid() {
+        return mShareItemTid;
+    }
+
+    public static String getShareItemCallback() {
+        return mShareItemCallback;
+    }
+
+    public static String getFromWhere() {
+        return mFromWhere;
+    }
+
+
+}
